@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>わたしのバスカード</title>
+<meta name="description" content="いつも のる バスを、定期入れに 入る カードと A4シート、スマホの 待ち受けに。全国の バスの オープンデータ（GTFS-JP）から、その人だけの バスカードを つくります。">
+<meta name="theme-color" content="#ffc933">
+<link rel="icon" href="img/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/app.css">
+<script type="module" src="js/main.js"></script>
+</head>
+<body>
+<a class="skip sr" href="#steps" data-t="skip">本文へ</a>
+<header class="top">
+  <div class="logo" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="15" rx="3"/><path d="M4 11h16M8 21v-3M16 21v-3"/><circle cx="8" cy="14.5" r="1"/><circle cx="16" cy="14.5" r="1"/><path d="M8 6.5h8"/></svg></div>
+  <div class="brand"><h1 data-t="appName">わたしのバスカード</h1><p data-t="tagline">いつもの バスを、ポケットサイズの カードに。</p></div>
+  <div class="spacer"></div>
+  <div class="lang-switch" role="group" aria-label="Language / ことば">
+    <button type="button" data-lang="ja" aria-pressed="true" lang="ja">にほんご</button>
+    <button type="button" data-lang="en" aria-pressed="false" lang="en">English</button>
+  </div>
+</header>
+
+<main class="layout">
+  <div class="steps" id="steps">
+    <!-- 1. data -->
+    <section class="step" id="step-data" aria-labelledby="h-data">
+      <h2 id="h-data"><span class="num">1</span><span data-t="s1">バスの データを えらぶ</span></h2>
+      <div class="step-body">
+        <div id="data-chosen" class="chosen" hidden></div>
+        <div id="data-pick">
+          <p class="hint" data-t="s1hint">都道府県と バス会社を えらんでください。時刻表は「GTFSデータリポジトリ」から その場で ダウンロードします。</p>
+          <div class="row">
+            <label class="field"><span data-t="pref">都道府県</span><select id="pref"></select></label>
+            <label class="field"><span data-t="feedQ">名前で さがす</span><input type="search" id="feed-q" autocomplete="off" enterkeyhint="search"></label>
+          </div>
+          <ul class="list" id="feed-list" aria-live="polite"></ul>
+          <p class="status" id="catalog-status"></p>
+          <div class="or" data-t="or">または</div>
+          <label class="drop" id="drop">
+            <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15.5V4.5M7.5 9L12 4.5 16.5 9"/><path d="M4.5 15v4.5h15V15"/></svg>
+            <span data-t="dropZip">GTFS-JPの ZIPファイルを えらぶ（ここに ドロップも できます）</span>
+            <input type="file" id="zip" accept=".zip,application/zip" class="sr">
+          </label>
+        </div>
+        <div id="load-box" hidden>
+          <p class="status" id="load-status" role="status"></p>
+          <div class="bar"><i id="load-bar"></i></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. boarding stop -->
+    <section class="step" id="step-from" aria-labelledby="h-from" aria-disabled="true">
+      <h2 id="h-from"><span class="num">2</span><span data-t="s2">いつも のる バス停</span></h2>
+      <div class="step-body">
+        <div id="from-chosen" class="chosen" hidden></div>
+        <div id="from-pick">
+          <label class="field"><span data-t="s2q">バス停の 名前（ひらがなでも OK）</span><input type="search" id="from-q" autocomplete="off" enterkeyhint="search"></label>
+          <div class="row row-tools">
+            <button type="button" class="btn" id="near-btn"><span data-t="nearby">近くの バス停</span></button>
+            <span class="tiny" data-t="nearbyNote">位置情報は この 画面の 中だけで つかいます</span>
+          </div>
+          <ul class="list" id="from-list"></ul>
+          <p class="status" id="from-status"></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. destination -->
+    <section class="step" id="step-to" aria-labelledby="h-to" aria-disabled="true">
+      <h2 id="h-to"><span class="num">3</span><span data-t="s3">おりる バス停（行き先）</span></h2>
+      <div class="step-body">
+        <div id="to-chosen" class="chosen" hidden></div>
+        <div id="to-pick">
+          <p class="hint" data-t="s3hint">のりかえなしで 行ける バス停です。バスが 多い じゅんに ならんでいます。</p>
+          <label class="field"><span data-t="s3q">しぼりこむ</span><input type="search" id="to-q" autocomplete="off" enterkeyhint="search"></label>
+          <ul class="list" id="to-list"></ul>
+          <p class="status" id="to-status"></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. settings -->
+    <section class="step" id="step-opts" aria-labelledby="h-opts" aria-disabled="true">
+      <h2 id="h-opts"><span class="num">4</span><span data-t="s4">カードの せってい</span></h2>
+      <div class="step-body">
+        <fieldset id="pole-out-box" class="pole-box" hidden><legend data-t="outPole">「いき」で のる のりば</legend><div class="seg" id="pole-out" role="group"></div><p class="tiny" id="pole-out-note"></p></fieldset>
+        <fieldset id="pole-back-box" class="pole-box" hidden><legend data-t="backPole">「かえり」で のる のりば</legend><div class="seg" id="pole-back" role="group"></div><p class="tiny" id="pole-back-note"></p></fieldset>
+        <label class="field"><span data-t="owner">なまえ（カードに 入ります。なくても OK）</span><input type="text" id="owner" maxlength="16" autocomplete="off"></label>
+        <fieldset><legend data-t="iconL">行き先の マーク</legend><div class="icons" id="icons"></div></fieldset>
+        <fieldset><legend data-t="outWin">「いき」に のせる 時間</legend><div class="seg" id="win-out" role="group"></div>
+          <div class="row custom" id="win-out-custom" hidden></div></fieldset>
+        <fieldset><legend data-t="backWin">「かえり」に のせる 時間</legend><div class="seg" id="win-back" role="group"></div>
+          <div class="row custom" id="win-back-custom" hidden></div></fieldset>
+        <p class="note" id="overflow-note" hidden data-t="overflow">じこくが 多くて カードに 入りきりません。のる 時間を えらぶと、ぜんぶ のせられます。</p>
+        <fieldset><legend data-t="cardLang">カードの ことば</legend><div class="seg" id="card-lang" role="group">
+          <button type="button" data-v="ja" aria-pressed="true">にほんご</button><button type="button" data-v="en" aria-pressed="false">English</button></div></fieldset>
+        <label class="toggle"><input type="checkbox" id="furigana" checked><span data-t="furigana">漢字に ふりがなを つける</span></label>
+        <label class="toggle"><input type="checkbox" id="child-fare"><span data-t="child">こども運賃も のせる（めやす）</span></label>
+        <label class="field field-gap"><span data-t="homePhone">こまったときの 電話（いえ など。なくても OK）</span><input type="tel" id="home-phone" maxlength="20" autocomplete="off" inputmode="tel"></label>
+      </div>
+    </section>
+
+    <!-- 5. output -->
+    <section class="step" id="step-out" aria-labelledby="h-out" aria-disabled="true">
+      <h2 id="h-out"><span class="num">5</span><span data-t="s5">いんさつ・ほぞん</span></h2>
+      <div class="step-body">
+        <div class="actions">
+          <button type="button" class="btn accent" id="print-cards"></button>
+          <button type="button" class="btn primary" id="print-sheet"></button>
+          <button type="button" class="btn" id="save-wall"></button>
+          <button type="button" class="btn" id="copy-link"></button>
+        </div>
+        <p class="note" data-t="printTip">いんさつ画面では 倍率「100%」（じっさいの 大きさ）を えらんでください。「PDFに保存」も できます。</p>
+        <p class="status" id="out-status" role="status"></p>
+      </div>
+    </section>
+  </div>
+
+  <aside class="preview" aria-labelledby="h-preview">
+    <h2 class="sr" id="h-preview" data-t="preview">プレビュー</h2>
+    <div class="tabs" role="tablist">
+      <button type="button" role="tab" id="tab-card" aria-selected="true" aria-controls="stage" data-tab="card" data-t="tabCard">カード</button>
+      <button type="button" role="tab" id="tab-sheet" aria-selected="false" aria-controls="stage" data-tab="sheet" data-t="tabSheet">A4 シート</button>
+      <button type="button" role="tab" id="tab-wall" aria-selected="false" aria-controls="stage" data-tab="wall" data-t="tabWall">スマホ</button>
+    </div>
+    <div class="stage" id="stage" role="tabpanel" tabindex="0">
+      <div class="empty" id="empty">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5.5" width="18" height="13" rx="2"/><path d="M6.5 9.5h6M6.5 12.5h11M6.5 15h8"/></svg>
+        <p data-t="emptyPreview">バス停を えらぶと、ここに カードが できます</p>
+      </div>
+    </div>
+    <p class="status" id="preview-status"></p>
+  </aside>
+</main>
+
+<footer class="foot">
+  <p data-t="privacy">えらんだ バス停・なまえ・電話番号は、この ブラウザの 中だけで つかいます。どこにも 送りません。</p>
+  <p><span id="credits" data-t="credits">時刻データ：GTFSデータリポジトリ（各事業者の オープンデータ）・地図：地理院タイル・フォント：BIZ UDPゴシック／BIZ UDゴシック（SIL Open Font License）・ライブラリ：fflate、qrcode-generator、holiday_jp（MIT License）</span> <a href="THIRD_PARTY_NOTICES.txt" data-t="licenses">ライセンス</a></p>
+</footer>
+
+<div id="print-root" aria-hidden="true"></div>
+<noscript><p style="padding:16px">このアプリは JavaScript を つかいます。</p></noscript>
+</body>
+</html>
