@@ -110,11 +110,11 @@ function layoutTimes(ctx, d, lang, width, maxLines) {
       roundRect(ctx, x0 * S, (y + 2) * S, LABEL_W * S, (LINE - 4) * S, 5 * S);
       ctx.fill();
       ctx.fillStyle = INK;
-      const ls = fitSize(ctx, r.g.label, LABEL_W - 6, 11.5, 7.5, 700);
+      const ls = fitSize(ctx, r.g.label, LABEL_W - 6, 11.5, 6, 700);
       ctx.font = f(ls, 700);
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(r.g.label, (x0 + LABEL_W / 2) * S, (y + LINE / 2) * S);
+      ctx.fillText(ellipsize(ctx, r.g.label, LABEL_W - 4), (x0 + LABEL_W / 2) * S, (y + LINE / 2) * S);
       ctx.textAlign = 'left';
       ctx.textBaseline = 'alphabetic';
       for (const line of r.lines) {
@@ -125,13 +125,13 @@ function layoutTimes(ctx, d, lang, width, maxLines) {
             const sz = fitSize(ctx, it.text, width - LABEL_W - 8, 14, 9, 700);
             ctx.font = f(sz, 700);
             ctx.fillStyle = INK;
-            ctx.fillText(it.text, x * S, base * S);
+            ctx.fillText(ellipsize(ctx, it.text, width - LABEL_W - 8), x * S, base * S);
             continue;
           }
           if (it.none || it.more) {
             ctx.font = f(11, 400);
             ctx.fillStyle = '#7c849b';
-            ctx.fillText(it.text, x * S, base * S);
+            ctx.fillText(ellipsize(ctx, it.text, width - LABEL_W - 8), x * S, base * S);
             x += ctx.measureText(it.text).width / S + GAP;
             continue;
           }
@@ -262,9 +262,9 @@ async function panel(ctx, d, which, o, x0, y0, width, maxLines, icons, dryRun) {
 
   // bus: LED plate or "any bus"
   if (!d.variants.length) {
-    ctx.font = f(13, 700);
+    ctx.font = f(fitSize(ctx, t.noDirect, inner, 13, 9, 700), 700);
     ctx.fillStyle = INK2;
-    ctx.fillText(t.noDirect, x * S, (y + 24) * S);
+    ctx.fillText(ellipsize(ctx, t.noDirect, inner), x * S, (y + 24) * S);
     return height;
   }
   if (d.mode === 'any') {
@@ -384,7 +384,40 @@ function collectText(card, o) {
   return parts.filter(Boolean).join('');
 }
 
-export async function makeWallpaper(card, o) {
+// The layout of the wallpaper, in points (390 x 844, 3 px each):
+//  - 0 to TOP (the top third) stays empty for the clock of the lock screen;
+//  - the panels and the data credit end above BOTTOM, clear of the buttons at the bottom of the screen.
+// When they do not fit at full size, the busy rows are first shown as "6:47〜9:58　1時間に やく9本",
+// then everything is drawn smaller, step by step, until it fits.
+const TOP = 282, BOTTOM = 778, CREDIT = 18, GAP = 12, X = 16, WIDTH = 390 - 32;
+const MIN_STEP = 0.7;
+
+async function fitPanels(ctx, dirs, o, icons) {
+  const room = BOTTOM - TOP - CREDIT - GAP * (dirs.length - 1);
+  const maxLines = dirs.length > 1 ? 3 : 6;
+  // Height of each panel when drawn k times smaller than the design, with at most `lines` lines per row.
+  const sizes = async (k, lines) => {
+    const hs = [];
+    for (const [which, d] of dirs) hs.push(k * await panel(ctx, d, which, o, X / k, 0, WIDTH / k, lines, icons, true));
+    return hs;
+  };
+  const sum = (hs) => hs.reduce((a, b) => a + b, 0);
+  for (let k = 1; k >= MIN_STEP - 1e-9; k -= 0.02) {
+    for (let lines = maxLines; lines >= 1; lines--) {
+      const hs = await sizes(k, lines);
+      if (sum(hs) <= room) return { k, lines, hs };
+    }
+  }
+  // Still too tall (many day groups, long names): shrink to the room that is left, whatever it takes.
+  let k = MIN_STEP, hs = await sizes(k, 1);
+  for (let i = 0; i < 40 && sum(hs) > room; i++) {
+    k *= Math.min(0.98, room / sum(hs));
+    hs = await sizes(k, 1);
+  }
+  return { k, lines: 1, hs };
+}
+
+export async function makeWallpaper(card, o, report = null) {
   const canvas = document.createElement('canvas');
   canvas.width = W;
   canvas.height = H;
@@ -415,20 +448,17 @@ export async function makeWallpaper(card, o) {
     check: await iconImg('check', ON, 96), bell: await iconImg('bell', OFF, 72),
   };
   const dirs = [['out', card.outbound], ['back', card.inbound]].filter(([, d]) => d);
-  const TOP = 282, BOTTOM = 778, GAP = 12, X = 16, WIDTH = 390 - 32;
-  let lines = dirs.length > 1 ? 3 : 6;
-  let heights = [];
-  for (; lines >= 1; lines--) {
-    heights = [];
-    for (const [which, d] of dirs) heights.push(await panel(ctx, d, which, o, X, 0, WIDTH, lines, icons, true));
-    const total = heights.reduce((a, b) => a + b, 0) + GAP * (dirs.length - 1);
-    if (total <= BOTTOM - TOP - 18) break;
-  }
-  lines = Math.max(1, lines);
+  const { k, lines, hs: heights } = await fitPanels(ctx, dirs, o, icons);
+  const panels = [];
   let y = TOP;
   for (let i = 0; i < dirs.length; i++) {
     const [which, d] = dirs[i];
-    await panel(ctx, d, which, o, X, y, WIDTH, lines, icons, false);
+    // Drawn in a coordinate system k times smaller: the panel keeps its width, everything in it shrinks.
+    ctx.save();
+    ctx.scale(k, k);
+    await panel(ctx, d, which, o, X / k, y / k, WIDTH / k, lines, icons, false);
+    ctx.restore();
+    panels.push({ x: X, y, w: WIDTH, h: heights[i] });
     y += heights[i] + GAP;
   }
   // data credit and validity
@@ -441,5 +471,7 @@ export async function makeWallpaper(card, o) {
   ctx.textAlign = 'center';
   ctx.fillText(ellipsize(ctx, credit, WIDTH), (390 / 2) * S, (y + 4) * S);
   ctx.textAlign = 'left';
+  // For automated checks: where things were drawn (points).
+  if (report) Object.assign(report, { width: W / S, height: H / S, top: TOP, bottom: BOTTOM, scale: k, lines, panels, creditBaseline: y + 4 });
   return new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
 }

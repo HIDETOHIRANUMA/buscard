@@ -238,6 +238,7 @@ legend { font-size: 14px; color: var(--ink-2); margin-bottom: 6px; padding: 0; }
 .t .mk { font-size: 2mm; margin-right: .2mm; }
 .t .cd { font-size: 1.6mm; margin-left: .2mm; color: #4b5572; font-family: var(--mono); vertical-align: .6mm; }
 .t-more { font-family: var(--ui); font-size: 2mm; color: #7c849b; font-weight: 400; }
+.c-note { margin: auto 0 0; font-size: 1.9mm; line-height: 1.2; color: #4b5572; }
 .c-foot { display: flex; align-items: center; flex-wrap: wrap; gap: .2mm 2mm; border-top: .25mm dashed #d8d0bd; padding-top: .9mm; font-size: 2.05mm; }
 .c-foot .ic { width: 2.8mm; height: 2.8mm; margin-right: .5mm; }
 .c-bell { flex: 1 1 auto; min-width: 45%; color: var(--off); display: flex; align-items: center; }
@@ -290,6 +291,9 @@ legend { font-size: 14px; color: var(--ink-2); margin-bottom: 6px; padding: 0; }
 .s-table .cd { font-style: normal; font-size: 1.8mm; color: #4b5572; vertical-align: .8mm; margin-left: .2mm; }
 .s-special, .s-contact { display: flex; gap: 1.5mm; align-items: flex-start; margin: 1.5mm 0 0; font-size: 2.7mm; color: #4b5572; }
 .s-special .ic, .s-contact .ic { width: 3.6mm; height: 3.6mm; }
+/* "じこくが ちがう日　<the first kind of day>", then one line for each other kind */
+.s-special .sp { display: block; color: #1b2440; }
+.s-special b + .sp { display: inline; }
 .s-note { margin: 1mm 0 0; font-size: 2.5mm; color: #4b5572; }
 .s-none { color: #7c849b; }
 .s-contact { font-size: 3.2mm; color: #1b2440; font-weight: 700; }
@@ -319,12 +323,24 @@ legend { font-size: 14px; color: var(--ink-2); margin-bottom: 6px; padding: 0; }
 .sheet.dense-1 .s-steps { gap: 1.2mm; }
 .sheet.dense-1 .s-steps li { padding: 1.3mm 2mm; }
 .sheet.dense-1 .s-map { height: 26mm; }
+.sheet.dense-1 .s-special { font-size: 2.5mm; margin-top: 1.2mm; }
 .sheet.dense-2 { gap: 2mm; padding-top: 6mm; font-size: 2.9mm; }
 .sheet.dense-2 .s-table { font-size: 2.2mm; }
 .sheet.dense-2 .s-table th, .sheet.dense-2 .s-table td { padding: .25mm .7mm; }
 .sheet.dense-2 .s-steps li > div > b { font-size: 3.1mm; }
 .sheet.dense-2 .s-steps li { padding: 1mm 1.8mm; }
 .sheet.dense-2 .s-map { height: 22mm; }
+.sheet.dense-2 .s-special { font-size: 2.3mm; margin-top: 1mm; }
+/* last resort for very full sheets: as dense-2, with a lower map and less padding */
+.sheet.dense-3 { gap: 1.6mm; padding-top: 5mm; padding-bottom: 5mm; font-size: 2.9mm; }
+.sheet.dense-3 .s-table { font-size: 2.2mm; }
+.sheet.dense-3 .s-table th, .sheet.dense-3 .s-table td { padding: .2mm .7mm; }
+.sheet.dense-3 .s-steps { gap: 1mm; }
+.sheet.dense-3 .s-steps li > div > b { font-size: 3.1mm; }
+.sheet.dense-3 .s-steps li { padding: .8mm 1.6mm; }
+.sheet.dense-3 .s-map { height: 19mm; }
+.sheet.dense-3 .s-dir h3 { margin: 2mm 0 .8mm; }
+.sheet.dense-3 .s-special { font-size: 2.2mm; margin-top: .8mm; }
 .sheet-cut { justify-content: flex-start; }
 .sheet-cut .s-cut { margin-top: 0; border-top: 0; }
 .cards-help { margin: 0; font-size: 3mm; color: #4b5572; text-align: center; }

@@ -100,6 +100,34 @@ export function nearestPlaces(ctx, lat, lon, limit = 8) {
     .map(([d, p]) => ({ place: p, meters: Math.round(d) }));
 }
 
+// Same name for a remake link: normName (width, kana, spaces, ・) and small ヶ/ヵ written as ケ/カ.
+const linkKey = (s) => normName(s).replace(/ゖ/g, 'け').replace(/ゕ/g, 'か');
+
+// Places for a stop name from a remake link, from the strictest match to the loosest:
+// the exact name of the place, the exact name of one of its poles, then the same after linkKey.
+// Returns every place of the first stage that finds any (several when the name is not unique).
+export function placesByName(feed, ctx, name) {
+  if (!name) return [];
+  const S = feed.stops;
+  const k = linkKey(name);
+  const stages = [
+    (p) => p.name === name,
+    (p) => p.poles.some((s) => S.name[s] === name),
+    (p) => !!k && linkKey(p.name) === k,
+    (p) => !!k && p.poles.some((s) => linkKey(S.name[s]) === k),
+  ];
+  for (const ok of stages) {
+    const hit = ctx.places.filter(ok);
+    if (hit.length) return hit;
+  }
+  return [];
+}
+
+export function sameStopName(feed, place, name) {
+  const k = linkKey(name);
+  return place.name === name || linkKey(place.name) === k || place.poles.some((s) => linkKey(feed.stops.name[s]) === k);
+}
+
 // Names of routes that serve a place (for telling same-named places apart).
 export function placeRoutes(feed, ctx, placeId, limit = 3) {
   const seen = new Map();
@@ -258,7 +286,7 @@ export function dayPlan(feed, holidays, todayYmd, nDays = 90) {
   for (let d = start, k = 0; k < nDays && d <= range.end; k++, d = addDays(d, 1)) {
     const w = weekdayOf(d);
     const type = w === 6 || holidays.has(d) ? 'holiday' : (w === 5 ? 'saturday' : 'weekday');
-    dates.push({ ymd: d, w, type });
+    dates.push({ ymd: d, w, type, hol: holidays.has(d) });
   }
   return { start, end: dates.length ? dates[dates.length - 1].ymd : start, expired, range, dates };
 }
@@ -335,6 +363,33 @@ export function dateRanges(list, lang = 'ja') {
   }
   if (s !== null) out.push(s === p ? fmt(s) : `${fmt(s)}${lang === 'en' ? '–' : '〜'}${fmt(p)}`);
   return out;
+}
+
+// Dates for the "じこくが ちがう日" line: "11/23・1/1・1/11（祝）", "12/30〜1/3", "11/15〜12/27 の 日曜".
+// hol = national holidays (Sundays are not marked). At most maxRuns parts, then "など".
+const DOW_EN = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+export function dayList(list, lang = 'ja', hol = new Set(), maxRuns = 6) {
+  const en = lang === 'en';
+  const md = (d) => `${Math.floor((d % 10000) / 100)}/${d % 100}`;
+  const ds = [...new Set(list)].sort((a, b) => a - b);
+  if (!ds.length) return '';
+  // Same weekday every week (3 times or more): name the weekday instead of listing the dates.
+  if (ds.length >= 3 && ds.every((d, i) => i === 0 || addDays(ds[i - 1], 7) === d)) {
+    const w = weekdayOf(ds[0]);
+    return en ? `${DOW_EN[w]}s ${md(ds[0])}–${md(ds[ds.length - 1])}` : `${md(ds[0])}〜${md(ds[ds.length - 1])} の ${DOW_JA[w]}曜`;
+  }
+  const runs = [];
+  for (const d of ds) {
+    const r = runs[runs.length - 1];
+    if (r && addDays(r[1], 1) === d) r[1] = d; else runs.push([d, d]);
+  }
+  const allHol = ds.every((d) => hol.has(d));
+  const mark = en ? ' (holiday)' : '（祝）';
+  const parts = runs.slice(0, maxRuns).map(([a, b]) => (a === b ? md(a) + (!allHol && hol.has(a) ? mark : '') : `${md(a)}${en ? '–' : '〜'}${md(b)}`));
+  let s = parts.join(en ? ', ' : '・');
+  if (runs.length > maxRuns) s += en ? ' etc.' : ' など';
+  else if (allHol) s += en ? (ds.length > 1 ? ' (holidays)' : mark) : mark;
+  return s;
 }
 
 // ---------- fares ----------
@@ -527,20 +582,77 @@ function directionModel(feed, ctx, plan, fromId, toId, opts) {
   }
   const win = opts.window;
   const sched = scheduleGroups(feed, plan, new Set(rows.map((r) => trips.service[r.trip])));
-  const groups = sched.map((g) => {
-    const w = weekdayOf(g.ymd);
-    const list = rows.filter((r) => serviceRuns(feed, trips.service[r.trip], g.ymd, w))
+  // Departures on one date (in the time window), one per time, or per time and variant when marks tell them apart.
+  const keyOf = (x) => (mode === 'any' || mode === 'single' || mode === 'dest' ? String(x.dep) : x.dep + '|' + x.key);
+  const timesOn = (ymd) => {
+    const w = weekdayOf(ymd);
+    const list = rows.filter((r) => serviceRuns(feed, trips.service[r.trip], ymd, w))
       .filter((r) => !win || (r.dep >= win[0] && r.dep <= win[1]))
       .sort((a, b) => a.dep - b.dep || a.mark.localeCompare(b.mark));
     const seen = new Set();
     const times = [];
     for (const r of list) {
-      const k = mode === 'any' || mode === 'single' || mode === 'dest' ? String(r.dep) : r.dep + '|' + r.key;
+      const k = keyOf(r);
       if (seen.has(k)) continue;
       seen.add(k);
       times.push({ dep: r.dep, arr: r.arr, t: fmtTime(r.dep), mark: r.mark, code: r.code, key: r.key, phone: r.phone, sym: r.sym, desc: r.desc });
     }
-    return { keys: g.keys, label: groupLabel(g.keys, lang), ymd: g.ymd, none: g.none || times.length === 0, specials: dateRanges(g.specials, lang), specialCount: g.specials.length, times };
+    return times;
+  };
+  const usualTimes = sched.map((g) => timesOn(g.ymd));
+  const labels = sched.map((g) => groupLabel(g.keys, lang));
+  const usualKey = usualTimes.map((ts) => ts.map(keyOf).join('\u0001'));
+  // Dates that differ from the usual day of their group, and what runs on them instead, as the data says:
+  // the times of another group ('as'), no bus ('none'), the usual times plus some ('more') or minus some ('less'),
+  // or a timetable of its own ('other'). Dates whose departures turn out the same are not listed.
+  const differs = sched.map(() => []);
+  const found = [];
+  sched.forEach((g, gi) => {
+    for (const ymd of g.specials) {
+      const times = timesOn(ymd);
+      const key = times.map(keyOf).join('\u0001');
+      if (key === usualKey[gi]) continue;
+      differs[gi].push(ymd);
+      let kind, as = '', extra = null;
+      const same = usualKey.findIndex((u, j) => j !== gi && u === key);
+      if (!times.length) kind = 'none';
+      else if (same >= 0) { kind = 'as'; as = labels[same]; }
+      else {
+        const own = new Set(usualTimes[gi].map(keyOf)), now = new Set(times.map(keyOf));
+        const added = times.filter((x) => !own.has(keyOf(x))), removed = usualTimes[gi].filter((x) => !now.has(keyOf(x)));
+        if (!removed.length) { kind = own.size ? 'more' : 'run'; extra = added; }
+        else if (!added.length) { kind = 'less'; extra = removed; }
+        else {
+          // Close to another group's timetable: its times with up to 4 buses more ('asMore') or fewer ('asLess').
+          let best = null;
+          usualTimes.forEach((u, j) => {
+            if (j === gi || !u.length) return;
+            const us = new Set(u.map(keyOf));
+            const plus = times.filter((x) => !us.has(keyOf(x))), minus = u.filter((x) => !now.has(keyOf(x)));
+            const n = plus.length + minus.length;
+            if ((plus.length && minus.length) || n > 4 || (best && n >= best.n)) return;
+            best = { j, n, plus, minus };
+          });
+          if (best) { kind = best.plus.length ? 'asMore' : 'asLess'; as = labels[best.j]; extra = best.plus.length ? best.plus : best.minus; }
+          else kind = 'other';
+        }
+      }
+      const id = `${kind}\u0001${as}\u0001${extra ? extra.map(keyOf).join('\u0001') : ''}`;
+      let it = found.find((x) => x.id === id);
+      if (!it) { it = { id, kind, as, extra, ymds: [] }; found.push(it); }
+      it.ymds.push(ymd);
+    }
+  });
+  const hol = new Set(plan.dates.filter((d) => d.hol).map((d) => d.ymd));
+  const timeLabel = (x) => `${x.phone ? '☎' : ''}${mode === 'mark' || mode === 'pole' ? x.mark || '' : ''}${x.t}${mode === 'code' && x.code ? `(${x.code})` : ''}`;
+  const special = found.map((it) => {
+    const ymds = it.ymds.sort((a, b) => a - b);
+    return { kind: it.kind, dates: dayList(ymds, lang, hol), as: it.as, n: it.extra ? it.extra.length : 0,
+      times: it.extra && it.extra.length <= 4 ? it.extra.map(timeLabel) : null, first: ymds[0], ymds };
+  }).sort((a, b) => a.first - b.first);
+  const groups = sched.map((g, gi) => {
+    const times = usualTimes[gi];
+    return { keys: g.keys, label: labels[gi], ymd: g.ymd, none: g.none || times.length === 0, specials: dateRanges(differs[gi], lang), specialCount: differs[gi].length, times };
   });
   // Variants that never run in the chosen window are hidden from the legend.
   const used = new Set(groups.flatMap((g) => g.times.map((t) => t.key)));
@@ -553,7 +665,7 @@ function directionModel(feed, ctx, plan, fromId, toId, opts) {
   return {
     from: ctx.places[fromId], to: ctx.places[toId], mode, detours, poleStats, poleChoice, bell,
     dests: destList ? destList.map((name) => { const v = variantOut.find((x) => x.dest === name); return { name, en: v ? v.destEn : '', yuki: v ? v.yuki : false }; }) : null,
-    variants: shown, groups, count: groups.reduce((n, g) => n + g.times.length, 0),
+    variants: shown, groups, special, count: groups.reduce((n, g) => n + g.times.length, 0),
     fare: fares.length ? { min: fares[0], max: fares[fares.length - 1] } : null,
     minutes: mins.length ? { min: Math.min(...mins), max: Math.max(...mins) } : null,
     prev: shown[0]?.prev || null,

@@ -1,6 +1,9 @@
 // Turns a card model into printable HTML (pocket card front/back and the A4 sheet).
 import { icon } from './icons.js';
 
+// "12/29〜12/31 は", but "1/1・1/11（祝）は" (no space after a closing bracket)
+const wa = (d) => (/[）)]$/.test(d) ? `${d}は` : `${d} は`);
+
 export const T = {
   ja: {
     title: 'わたしの バスカード', owner: (n) => `${n} の バスカード`,
@@ -25,6 +28,14 @@ export const T = {
     inWin: 'きいろの 時間は カードに のせた じこくです',
     ruler: 'この 線が 5cm なら、ただしい 大きさで いんさつ できています',
     cardsHelp: 'きりとり線で きって、まんなかの 点線で おると 定期入れに 入る カードに なります',
+    // "じこくが ちがう日" (d = dates, l = the timetable that runs, ts = times)
+    specAs: (d, l) => `${wa(d)} ${l}の じこく`, specNone: (d) => `${wa(d)} バスが ありません`,
+    specMore: (d, ts) => `${wa(d)} ${ts} の バスも あります`, specMoreN: (d, n) => `${wa(d)} バスが ${n}本 ふえます`,
+    specRun: (d, ts) => `${wa(d)} ${ts} に バスが あります`, specRunN: (d, n) => `${wa(d)} バスが ${n}本 あります`,
+    specLess: (d, ts) => `${wa(d)} ${ts} の バスが ありません`, specLessN: (d, n) => `${wa(d)} バスが ${n}本 へります`,
+    specAsMore: (d, l, ts) => `${wa(d)} ${l}の じこく ＋ ${ts}`, specAsLess: (d, l, ts) => `${wa(d)} ${l}の じこく（${ts} は なし）`,
+    specOther: (d) => `${wa(d)} とくべつな じこく`,
+    cardNote: '※じこくが ちがう日 あり → A4シート',
   },
   en: {
     title: 'My Bus Card', owner: (n) => `${n}'s Bus Card`,
@@ -36,7 +47,7 @@ export const T = {
     bell: (prev) => `Press the button after ${prev}`, bellNext: 'Press right away (next stop)',
     fare: 'Fare', adult: 'Adult', child: 'Child', yen: (n) => `¥${n.toLocaleString('en-US')}`,
     min: (m) => `about ${m} min`, none: 'No buses', more: (n) => `+${n} more`,
-    special: 'Different times on', etc: 'etc.', phone: 'Help', home: 'Home',
+    special: 'Days with other times', etc: 'etc.', phone: 'Help', home: 'Home',
     valid: (d) => `Times valid until ${d}`, made: (d) => `Made ${d}`,
     legendCode: 'The code next to a time is the number shown on the front of the bus',
     others: (n) => `+${n} more destinations`, booking: '☎ = booking required',
@@ -49,6 +60,13 @@ export const T = {
     inWin: 'Highlighted hours are the times printed on the card',
     ruler: 'If this line is 5 cm long, the print size is correct',
     cardsHelp: 'Cut along the dashed lines and fold at the dotted line to make a pass-holder card',
+    specAs: (d, l) => `${d}: ${l} times`, specNone: (d) => `${d}: no buses`,
+    specMore: (d, ts) => `${d}: extra buses at ${ts}`, specMoreN: (d, n) => `${d}: ${n} more buses`,
+    specRun: (d, ts) => `${d}: buses at ${ts}`, specRunN: (d, n) => `${d}: ${n} buses`,
+    specLess: (d, ts) => `${d}: no bus at ${ts}`, specLessN: (d, n) => `${d}: ${n} fewer buses`,
+    specAsMore: (d, l, ts) => `${d}: ${l} times plus ${ts}`, specAsLess: (d, l, ts) => `${d}: ${l} times without ${ts}`,
+    specOther: (d) => `${d}: special timetable`,
+    cardNote: '* Some days have other times → A4 sheet',
   },
 };
 
@@ -213,7 +231,7 @@ function cardSide(c, d, which) {
     <div class="c-stop"><span class="c-tag c-tag-off">${t.alight}</span><span class="c-name">${c.stopName(d.to)}</span></div>
   </div>
   <div class="c-bus">${busLine}</div>
-  <div class="c-times">${rows || `<div class="c-row"><span class="c-list c-none">${d.variants.length ? t.none : t.noDirect}</span></div>`}</div>
+  <div class="c-times">${rows || `<div class="c-row"><span class="c-list c-none">${d.variants.length ? t.none : t.noDirect}</span></div>`}${o.notes && o.notes[which] && d.special && d.special.length ? `<div class="c-note">${esc(t.cardNote)}</div>` : ''}</div>
   <div class="c-foot">${d.variants.length ? `<span class="c-bell">${icon('bell', 'ic')}<span>${bellText(c, d)}</span></span>` : '<span class="c-bell"></span>'}${d.fare ? `<span class="c-fare">${icon('coin', 'ic')}${fareText(c, d)}</span>` : ''}${d.minutes ? `<span class="c-min">${icon('clock', 'ic')}${t.min(d.minutes.max)}</span>` : ''}</div>
 </div>`;
 }
@@ -246,13 +264,28 @@ function hourTable(c, d, win) {
   return `<table class="s-table"><thead>${head}</thead><tbody>${body}</tbody></table>`;
 }
 
+// One line for each kind of day: "11/23・1/1・1/11（祝）は 月・水・金曜の じこく", "12/29〜1/3 は バスが ありません".
+export function specialText(t, s, lang) {
+  const ts = s.times ? s.times.join(lang === 'en' ? ', ' : '・') : '';
+  switch (s.kind) {
+    case 'as': return t.specAs(s.dates, s.as);
+    case 'none': return t.specNone(s.dates);
+    case 'more': return ts ? t.specMore(s.dates, ts) : t.specMoreN(s.dates, s.n);
+    case 'run': return ts ? t.specRun(s.dates, ts) : t.specRunN(s.dates, s.n);
+    case 'less': return ts ? t.specLess(s.dates, ts) : t.specLessN(s.dates, s.n);
+    case 'asMore': return t.specAsMore(s.dates, s.as, ts);
+    case 'asLess': return t.specAsLess(s.dates, s.as, ts);
+    default: return t.specOther(s.dates);
+  }
+}
+
 function specials(c, d) {
-  const { t } = c;
-  const list = d.groups.filter((g) => g.specials.length).map((g) => {
-    const s = g.specials.slice(0, 4).join('、') + (g.specials.length > 4 ? ` ${t.etc}` : '');
-    return `${esc(g.label)}：${esc(s)}`;
-  });
-  return list.length ? `<p class="s-special">${icon('info', 'ic')}<span>${t.special}　${list.join('　')}</span></p>` : '';
+  const { t, lang } = c;
+  const list = d.special || [];
+  if (!list.length) return '';
+  const items = list.slice(0, 4).map((s) => `<span class="sp">${esc(specialText(t, s, lang))}</span>`);
+  if (list.length > 4) items.push(`<span class="sp">${t.etc}</span>`);
+  return `<p class="s-special">${icon('info', 'ic')}<span><b>${t.special}</b>${lang === 'en' ? ' — ' : '　'}${items.join('')}</span></p>`;
 }
 
 function steps(c, d) {

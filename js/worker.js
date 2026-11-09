@@ -1,7 +1,7 @@
 // Data worker: downloads, unzips and parses a GTFS feed, then answers queries from the page.
 import { unzipSync } from '../vendor/fflate.js';
 import { loadFeed, serviceDateRange } from './gtfs.js';
-import { buildIndex, searchPlaces, reachablePlaces, nearestPlaces, buildCard, placeRoutes } from './core.js';
+import { buildIndex, searchPlaces, reachablePlaces, nearestPlaces, buildCard, placeRoutes, placesByName, sameStopName, directPairs } from './core.js';
 
 let feed = null;
 let ctx = null;
@@ -73,6 +73,34 @@ function placeByStopId(stopId) {
   return p >= 0 ? ctx.places[p] : null;
 }
 
+// Candidate places for one stop of a remake link ({ stopId, name }; links made before 2026-11-09 have no name).
+// The stop id is used when it is still there and its name still matches. A newer timetable may have new ids:
+// then the stop is looked up by its name. A stop that kept its id but was renamed is still found by the id.
+function linkCandidates(x) {
+  const byId = x.stopId ? placeByStopId(x.stopId) : null;
+  if (!x.name) return byId ? [byId] : [];
+  if (byId && sameStopName(feed, byId, x.name)) return [byId];
+  const byName = placesByName(feed, ctx, x.name);
+  if (!byName.length) return byId ? [byId] : [];
+  return byId && !byName.includes(byId) ? [...byName, byId] : byName;
+}
+
+// Both stops of a remake link. When a name fits several stops, the pair with a direct bus between them wins
+// (the link was made for such a pair). If that still leaves a choice, the page asks the user: no guessing.
+function resolveLink(a, b) {
+  const A = linkCandidates(a), B = linkCandidates(b);
+  const pick = (p) => (p ? { ...slim(p), stopId: feed.stops.id[p.poles[0]] } : null);
+  if (A.length === 1 && B.length === 1 && A[0] !== B[0]) return { from: pick(A[0]), to: pick(B[0]) };
+  const linked = [];
+  for (const x of A) for (const y of B) if (x.id !== y.id && directPairs(feed, ctx, x.id, y.id).length) linked.push([x, y]);
+  if (linked.length === 1) return { from: pick(linked[0][0]), to: pick(linked[0][1]) };
+  const froms = [...new Set(linked.map(([x]) => x))];
+  const from = A.length === 1 ? A[0] : froms.length === 1 ? froms[0] : null;
+  if (!from) return { need: 'from', count: A.length };
+  const tos = linked.filter(([x]) => x === from).map(([, y]) => y);
+  return { from: pick(from), need: 'to', count: B.length === 1 ? 1 : Math.max(tos.length, B.length) };
+}
+
 self.onmessage = async (e) => {
   const { id, type, ...p } = e.data;
   const reply = (data) => self.postMessage({ id, ok: true, data });
@@ -100,9 +128,8 @@ self.onmessage = async (e) => {
       reply(reachablePlaces(feed, ctx, p.from).slice(0, p.limit || 400).map((r) => ({ ...slim(r.place), trips: r.trips, minutes: r.minutes })));
     } else if (type === 'nearest') {
       reply(nearestPlaces(ctx, p.lat, p.lon, p.limit || 8).map((r) => ({ ...slim(r.place), meters: r.meters })));
-    } else if (type === 'place') {
-      const pl = p.stopId ? placeByStopId(p.stopId) : ctx.places[p.id];
-      reply(pl ? { ...slim(pl), stopId: feed.stops.id[pl.poles[0]] } : null);
+    } else if (type === 'resolve') {
+      reply(resolveLink(p.a || {}, p.b || {}));
     } else if (type === 'geo') {
       reply(ctx.places.map((pl) => [pl.id, pl.lat, pl.lon, pl.name]));
     } else if (type === 'card') {

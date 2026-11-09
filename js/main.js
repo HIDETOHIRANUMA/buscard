@@ -35,7 +35,7 @@ const UI = {
     preview: 'プレビュー', tabCard: 'カード', tabSheet: 'A4 シート', tabWall: 'スマホ', emptyPreview: 'バス停を えらぶと、ここに カードが できます',
     front: 'おもて（いき）', back: 'うら（かえり）',
     privacy: 'えらんだ バス停・なまえ・電話番号は、この ブラウザの 中だけで つかいます。どこにも 送りません。',
-    licenses: 'ライセンス', credits: '時刻データ：GTFSデータリポジトリ（各事業者の オープンデータ）・地図：地理院タイル・フォント：BIZ UDPゴシック／BIZ UDゴシック（SIL Open Font License）・ライブラリ：fflate、qrcode-generator、holiday_jp（MIT License）',
+    licenses: 'ライセンス', credits: '時刻データ：GTFSデータリポジトリ・Mobility Database（各事業者の オープンデータ）・地図：地理院タイル・フォント：BIZ UDPゴシック／BIZ UDゴシック（SIL Open Font License）・ライブラリ：fflate、qrcode-generator、holiday_jp（MIT License）',
     change: 'かえる', win: { all: 'ぜんぶ', morning: 'あさ 5〜10時', day: 'ひる 10〜15時', evening: 'ゆうがた 15〜19時', night: 'よる 19時〜', custom: 'じぶんで えらぶ' },
     hourFrom: '時から', hourTo: '時まで', hour: (h) => `${h}時`,
     catalogLoading: 'バス会社の 一覧を よみこんでいます…', catalogOffline: '一覧を よみこめませんでした。ZIPファイルを つかってください。',
@@ -52,6 +52,8 @@ const UI = {
     copied: 'リンクを コピーしました。QRコードと 同じ リンクです。', copyFail: 'コピーできませんでした。下の リンクを えらんで コピーしてください。',
     noLinkFile: 'ZIPファイルから つくった カードは、リンクで つくりなおせません。', restoring: 'リンクから カードを つくりなおしています…',
     restoreFail: 'リンクの バス停が みつかりませんでした。えらびなおしてください。', wallMaking: '待ち受け画像を つくっています…',
+    restoreMissing: (n) => `リンクの バス停「${n}」が みつかりませんでした。えらびなおしてください。`,
+    restoreMany: (n) => `「${n}」という バス停が いくつか あります。どれか えらんでください。`,
     wallHint: 'スマホで ひらいて 画像を ながおし →「写真に保存」→ 待ち受けに せってい', printing: 'いんさつの じゅんび中…',
     pinOn: 'のりば', mapAttr: '地理院タイル',
     outPole: '「いき」で のる のりば', backPole: '「かえり」で のる のりば', poleAll: 'ぜんぶ',
@@ -75,7 +77,7 @@ const UI = {
     preview: 'Preview', tabCard: 'Card', tabSheet: 'A4 sheet', tabWall: 'Phone', emptyPreview: 'Your card appears here after you choose the stops',
     front: 'Front (GO)', back: 'Back (RETURN)',
     privacy: 'Stops, names and phone numbers stay in this browser. Nothing is sent anywhere.',
-    licenses: 'Licenses', credits: 'Timetables: GTFS Data Repository (operators\' open data) · Map: GSI Tiles · Fonts: BIZ UDPGothic / BIZ UDGothic (SIL Open Font License) · Libraries: fflate, qrcode-generator, holiday_jp (MIT License)',
+    licenses: 'Licenses', credits: 'Timetables: GTFS Data Repository, Mobility Database (operators\' open data) · Map: GSI Tiles · Fonts: BIZ UDPGothic / BIZ UDGothic (SIL Open Font License) · Libraries: fflate, qrcode-generator, holiday_jp (MIT License)',
     change: 'Change', win: { all: 'All', morning: 'Morning 5–10', day: 'Day 10–15', evening: 'Evening 15–19', night: 'Night 19–', custom: 'Custom' },
     hourFrom: 'from', hourTo: 'to', hour: (h) => `${h}:00`,
     catalogLoading: 'Loading the list of operators…', catalogOffline: 'Could not load the list. Please use a ZIP file.',
@@ -92,6 +94,8 @@ const UI = {
     copied: 'Link copied. It is the same link as the QR code.', copyFail: 'Could not copy. Please select the link below and copy it.',
     noLinkFile: 'Cards made from a ZIP file cannot be remade from a link.', restoring: 'Remaking the card from the link…',
     restoreFail: 'The stops in the link were not found. Please choose them again.', wallMaking: 'Making the wallpaper…',
+    restoreMissing: (n) => `The stop "${n}" in the link was not found. Please choose it again.`,
+    restoreMany: (n) => `There are several stops named "${n}". Please choose one.`,
     wallHint: 'Open on your phone, long-press the image, save it to Photos and set it as wallpaper', printing: 'Preparing to print…',
     pinOn: 'Bus stop', mapAttr: 'GSI Tiles',
     outPole: 'Where you wait (GO)', backPole: 'Where you wait (RETURN)', poleAll: 'All',
@@ -121,7 +125,7 @@ const state = {
   source: null, summary: null,
   from: null, to: null, reach: [],
   opts: { owner: '', icon: 'school', outPole: 'auto', backPole: 'auto', outWin: 'all', backWin: 'all', outCustom: [7, 9], backCustom: [15, 18], lang: null, furigana: true, childFare: false, homePhone: '' },
-  card: null, full: null, fit: null, sheetFit: null, tab: 'card', wallUrl: null,
+  card: null, full: null, fit: null, notes: null, sheetFit: null, tab: 'card', wallUrl: null, pendingTo: '',
 };
 const L = () => UI[state.ui];
 const cardLang = () => state.opts.lang || state.ui;
@@ -358,7 +362,7 @@ async function loadFeed(source, payload) {
 }
 
 function resetFeed(render = true) {
-  state.source = null; state.summary = null;
+  state.source = null; state.summary = null; state.pendingTo = '';
   resetFrom(false);
   if (render) { renderChosen(); renderFeedList(); }
 }
@@ -372,19 +376,19 @@ function stopItem(p, extra = '') {
 
 let searchTimer = 0;
 let searchToken = 0;
+async function fromSearch(q) {
+  const ul = $('#from-list');
+  const tok = ++searchToken;
+  if (!q || !state.summary) { ul.replaceChildren(); $('#from-status').textContent = ''; return; }
+  const res = await call('search', { q, limit: 30 });
+  if (tok !== searchToken) return;
+  ul.innerHTML = res.map((p) => stopItem(p)).join('');
+  $('#from-status').textContent = res.length ? '' : L().noMatch;
+  ul._items = res;
+}
 function onFromInput() {
   clearTimeout(searchTimer);
-  searchTimer = setTimeout(async () => {
-    const q = $('#from-q').value.trim();
-    const ul = $('#from-list');
-    const tok = ++searchToken;
-    if (!q || !state.summary) { ul.replaceChildren(); $('#from-status').textContent = ''; return; }
-    const res = await call('search', { q, limit: 30 });
-    if (tok !== searchToken) return;
-    ul.innerHTML = res.map((p) => stopItem(p)).join('');
-    $('#from-status').textContent = res.length ? '' : L().noMatch;
-    ul._items = res;
-  }, 120);
+  searchTimer = setTimeout(() => fromSearch($('#from-q').value.trim()), 120);
 }
 
 function nearby() {
@@ -412,8 +416,10 @@ async function chooseFrom(p) {
   $('#to-q').value = '';
   const res = await call('reachable', { from: p.id, limit: 400 });
   state.reach = res;
+  // A remake link that needed a choice of the boarding stop still knows the name of the other stop.
+  if (state.pendingTo && !state.restoring) { $('#to-q').value = state.pendingTo; state.pendingTo = ''; }
   renderReach();
-  $('#to-status').textContent = res.length ? '' : L().noReach;
+  $('#to-status').textContent = res.length ? ($('#to-q').value && !$('#to-list').children.length ? L().noMatch : '') : L().noReach;
   if (!state.restoring) $('#to-q').focus();
 }
 
@@ -491,6 +497,8 @@ function renderOpts(extra = {}) {
   const o = state.opts;
   return { lang: cardLang(), furigana: o.furigana, owner: o.owner.trim(), icon: o.icon, childFare: o.childFare, homePhone: o.homePhone.trim(), ...extra };
 }
+// Options with the fitted card layout (how many times per side, and where the "different days" note fits).
+const fitOpts = () => renderOpts({ max: state.fit, notes: state.notes });
 
 function renderPoleControls() {
   const t = L();
@@ -565,12 +573,31 @@ async function refit() {
   state.fit = max;
   const truncated = /t-more/.test(measure.innerHTML);
   $('#overflow-note').hidden = !truncated;
+  // "※じこくが ちがう日 あり → A4シート": only on a side where it fits under the times, never instead of times.
+  const notes = { out: false, back: false };
+  const want = { out: !!state.card.outbound?.special?.length, back: !!state.card.inbound?.special?.length };
+  if (want.out || want.back) {
+    const { front, back } = renderCards(state.card, { ...o, max, notes: want });
+    measure.innerHTML = front + back;
+    await settle();
+    // No rounding allowance here: the note must not push anything out of the box, not even a pixel.
+    const fits = (box) => {
+      const n = box && box.querySelector('.c-note');
+      if (!n || box.scrollHeight > box.clientHeight || box.scrollWidth > box.clientWidth) return false;
+      const r = box.getBoundingClientRect(), nr = n.getBoundingClientRect();
+      return nr.bottom <= r.bottom + 0.5 && nr.right <= r.right + 0.5;
+    };
+    const [f, b] = measure.querySelectorAll('.c-times');
+    notes.out = want.out && fits(f);
+    notes.back = want.back && fits(b);
+  }
+  state.notes = notes;
   // A4 sheet: try roomier layouts first.
   const extra = sheetExtra();
   // When the cut-out card does not fit, it is left out: the card sheet prints it four times anyway.
-  state.sheetFit = { dense: 2, noCut: true };
-  for (const [dense, noCut] of [[0, false], [1, false], [0, true], [1, true], [2, true]]) {
-    measure.innerHTML = renderSheet(state.full, renderOpts({ max }), { ...extra, dense, noCut });
+  state.sheetFit = { dense: 3, noCut: true };
+  for (const [dense, noCut] of [[0, false], [1, false], [0, true], [1, true], [2, true], [3, true]]) {
+    measure.innerHTML = renderSheet(state.full, fitOpts(), { ...extra, dense, noCut });
     await settle();
     const sheet = measure.querySelector('.sheet');
     if (sheet.offsetHeight <= 297 * MM + 1) { state.sheetFit = { dense, noCut }; break; }
@@ -584,8 +611,11 @@ function remakeUrl() {
   const w = (dir) => (o[dir + 'Win'] === 'custom' ? `c${o[dir + 'Custom'][0]}-${o[dir + 'Custom'][1]}` : o[dir + 'Win']);
   const p = new URLSearchParams();
   p.set('f', state.source.key);
+  // Stop id of the first pole, and the stop name: a newer timetable may give the stop a new id.
   p.set('a', state.card.stopIds.from);
+  p.set('an', state.from.name);
   p.set('b', state.card.stopIds.to);
+  p.set('bn', state.to.name);
   p.set('i', o.icon);
   if (o.outPole !== 'auto') p.set('op', o.outPole);
   if (o.backPole !== 'auto') p.set('bp', o.backPole);
@@ -672,10 +702,10 @@ function sheetExtra() {
 }
 
 function sheetHtml() {
-  return renderSheet(state.full, renderOpts({ max: state.fit }), { ...sheetExtra(), ...state.sheetFit });
+  return renderSheet(state.full, fitOpts(), { ...sheetExtra(), ...state.sheetFit });
 }
 function cardSheetHtml() {
-  return renderCardSheet(state.card, renderOpts({ max: state.fit }), 4);
+  return renderCardSheet(state.card, fitOpts(), 4);
 }
 
 // ---------- preview ----------
@@ -700,7 +730,7 @@ async function renderPreview() {
     return;
   }
   const t = L();
-  const o = renderOpts({ max: state.fit });
+  const o = fitOpts();
   if (state.tab === 'card') {
     const { front, back } = renderCards(state.card, o);
     const narrow = stage.clientWidth < 560;
@@ -811,13 +841,28 @@ async function restoreFromHash() {
   const entry = state.catalog.find((x) => x.key === f);
   const ok = await loadFeed(sourceOf(entry || { key: f, name: f.replace(/^mdb:/, ''), orgName: '' }), { urls: feedUrls(f) });
   if (ok) {
-    const A = await call('place', { stopId: a });
-    const B = await call('place', { stopId: b });
-    if (A && B) {
-      await chooseFrom(A);
-      const reach = state.reach.find((x) => x.id === B.id);
-      await chooseTo(reach || B);
-    } else $('#preview-status').textContent = t.restoreFail;
+    // Links made since 2026-11-09 also carry the stop names (an, bn), used when a stop id is not found.
+    const an = (p.get('an') || '').trim(), bn = (p.get('bn') || '').trim();
+    const r = await call('resolve', { a: { stopId: a, name: an }, b: { stopId: b, name: bn } });
+    if (r.from) await chooseFrom(r.from);
+    if (r.from && r.to) {
+      const reach = state.reach.find((x) => x.id === r.to.id);
+      await chooseTo(reach || r.to);
+    } else {
+      // Not sure which stop the link means: ask instead of guessing, with its name already filled in.
+      const name = r.need === 'from' ? an : bn;
+      const msg = !name ? t.restoreFail : r.count > 1 ? t.restoreMany(name) : t.restoreMissing(name);
+      state.restoring = false;
+      if (r.need === 'from') {
+        state.pendingTo = bn;
+        if (an) { $('#from-q').value = an; await fromSearch(an); }
+        $('#from-status').textContent = msg;
+      } else {
+        if (bn) { $('#to-q').value = bn; renderReach(); }
+        $('#to-status').textContent = msg;
+      }
+      $('#preview-status').textContent = msg;
+    }
   }
   state.restoring = false;
 }

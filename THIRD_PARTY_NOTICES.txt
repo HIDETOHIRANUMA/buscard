@@ -75,3 +75,15 @@ SIL Open Font License 1.1 — see fonts/LICENSE-OFL.txt
 5) Timetable data: each operator's GTFS-JP open data, downloaded at run time from the GTFS Data Repository (https://gtfs-data.jp/) or the Mobility Database. The license of each feed is shown in the app and on the printed sheet.
 
 6) Map tiles: 地理院タイル（国土地理院） https://maps.gsi.go.jp/development/ichiran.html
+
+7) Feed list (data/feeds_fallback.json): the feeds that are not in the GTFS Data Repository (for example ODPT),
+the Mobility Database download addresses, and the whole list when the repository's API cannot be reached.
+Made on 2026-11-06 from the Mobility Database catalog by MobilityData (feeds_v2.csv,
+https://files.mobilitydatabase.org/feeds_v2.csv): for each Japanese GTFS feed, its id, operator, feed name,
+prefecture, license URL and download URLs. The README of the catalog
+(https://github.com/MobilityData/mobility-database-catalogs) says: "All of the Mobility Database catalog's
+metadata is made available under Creative Commons CC0 (CC0)"
+(https://creativecommons.org/publicdomain/zero/1.0/legalcode), and "Individual transit feeds are subject to
+the terms & conditions of their own respective data provider." The entries describe feeds published through
+the GTFS Data Repository (https://gtfs-data.jp/) and ODPT (https://www.odpt.org/). The timetables themselves are
+not in this file; each keeps the license of its operator (see 5).
